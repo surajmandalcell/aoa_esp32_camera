@@ -2,68 +2,27 @@
 #define DOTENV_H
 
 #include <Arduino.h>
-#include <SPIFFS.h>
+#include ".env.h"
 
 class DotEnv
 {
 public:
-  static bool load(const char *filename = "/.env")
+  static bool load()
   {
-    if (!SPIFFS.begin(true))
-    {
-      Serial.println("An error occurred while mounting SPIFFS");
-      return false;
-    }
-
-    File file = SPIFFS.open(filename, "r");
-    if (!file)
-    {
-      Serial.println("Failed to open .env file");
-      return false;
-    }
-
-    while (file.available())
-    {
-      String line = file.readStringUntil('\n');
-      line.trim();
-
-      // Skip comments and empty lines
-      if (line.startsWith("#") || line.length() == 0)
-      {
-        continue;
-      }
-
-      int separatorPos = line.indexOf('=');
-      if (separatorPos != -1)
-      {
-        String key = line.substring(0, separatorPos);
-        String value = line.substring(separatorPos + 1);
-
-        // Remove quotes if present
-        if ((value.startsWith("\"") && value.endsWith("\"")) ||
-            (value.startsWith("'") && value.endsWith("'")))
-        {
-          value = value.substring(1, value.length() - 1);
-        }
-
-        key.trim();
-        value.trim();
-
-        if (key.length() > 0 && value.length() > 0)
-        {
-          setenv(key.c_str(), value.c_str(), 1);
-        }
-      }
-    }
-
-    file.close();
     return true;
   }
 
   static String get(const char *key)
   {
-    const char *value = getenv(key);
-    return value ? String(value) : String();
+    if (strcmp(key, "WIFI_SSID") == 0)
+    {
+      return String(WIFI_SSID);
+    }
+    else if (strcmp(key, "WIFI_PASS") == 0)
+    {
+      return String(WIFI_PASS);
+    }
+    return String();
   }
 };
 

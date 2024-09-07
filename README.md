@@ -8,9 +8,15 @@
 git clone --recurse-submodules https://github.com/surajmandalcell/aoa_esp32_camera.git
 ```
 
-2. Use `main.cpp` as esp32-cam firmware. The code is written in Arduino IDE.
+2. Create .env with
+```env
+WIFI_SSID=xxxx
+WIFI_PASS=xxxx
+```
 
-3. Use main.py as the python script to read the gauge.
+Use `main.cpp` as esp32-cam firmware. The code is written in Arduino IDE.
+
+Use main.py as the python script to read the gauge.
 
 
 ## Update libraries
