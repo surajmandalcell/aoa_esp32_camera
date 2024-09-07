@@ -1,7 +1,7 @@
-#include "libraries/esp32cam/src/esp32cam.h"
+#include <esp32cam.h>
 #include <WebServer.h>
 #include <WiFi.h>
-#include "dotenv.h"
+#include ".env.h"
 
 WebServer server(80);
 
@@ -102,46 +102,10 @@ void handleMjpeg()
   Serial.printf("STREAM END %dfrm %0.2ffps\n", res, 1000.0 * res / duration);
 }
 
-void printNetworkInfo() {
-  Serial.println("\nNetwork Information:");
-  Serial.print("SSID: ");
-  Serial.println(WiFi.SSID());
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
-  Serial.print("Gateway IP: ");
-  Serial.println(WiFi.gatewayIP());
-  Serial.print("Subnet Mask: ");
-  Serial.println(WiFi.subnetMask());
-  Serial.print("DNS Server: ");
-  Serial.println(WiFi.dnsIP());
-  Serial.print("MAC Address: ");
-  Serial.println(WiFi.macAddress());
-  Serial.print("Signal Strength (RSSI): ");
-  Serial.print(WiFi.RSSI());
-  Serial.println(" dBm");
-}
-
 void setup()
 {
   Serial.begin(115200);
   Serial.println();
-
-  // Load environment variables
-  if (!DotEnv::load())
-  {
-    Serial.println("Failed to load .env file");
-    return;
-  }
-
-  // Read WiFi credentials from environment variables
-  String WIFI_SSID = DotEnv::get("WIFI_SSID");
-  String WIFI_PASS = DotEnv::get("WIFI_PASS");
-
-  if (WIFI_SSID.length() == 0 || WIFI_PASS.length() == 0)
-  {
-    Serial.println("Failed to read WiFi credentials from .env file");
-    return;
-  }
 
   {
     using namespace esp32cam;
@@ -157,13 +121,11 @@ void setup()
 
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID.c_str(), WIFI_PASS.c_str());
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
   }
-
-  printNetworkInfo();  // Print network information after connection
 
   Serial.print("http://");
   Serial.println(WiFi.localIP());
