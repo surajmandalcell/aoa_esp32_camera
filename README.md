@@ -3,7 +3,10 @@
 
 ## Usage
 
-1. Do git clone `git clone --recurse-submodules https://github.com/surajmandalcell/aoa_esp32_camera.git`
+1. Do git clone
+```bash
+git clone --recurse-submodules https://github.com/surajmandalcell/aoa_esp32_camera.git
+```
 
 2. Use `main.cpp` as esp32-cam firmware. The code is written in Arduino IDE.
 
