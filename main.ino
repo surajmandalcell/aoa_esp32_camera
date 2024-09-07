@@ -1,4 +1,4 @@
-#include <esp32cam.h>
+#include "libraries/esp32cam/src/esp32cam.h"
 #include <WebServer.h>
 #include <WiFi.h>
 #include "dotenv.h"
