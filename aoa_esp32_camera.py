@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import time
 
-url = "http://192.168.100.63/cam-hi.jpg"
+url = "http://192.168.2.62/cam-hi.jpg"
 
 
 def avg_circles(circles, b):
