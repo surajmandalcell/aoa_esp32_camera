@@ -1,0 +1,3 @@
+[submodule "libraries/esp32cam"]
+	path = libraries/esp32cam
+	url = https://github.com/yoursunny/esp32cam
