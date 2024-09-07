@@ -127,6 +127,21 @@ void setup()
     delay(500);
   }
 
+  // Print network details
+  Serial.println("\nWiFi connected successfully");
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("Subnet Mask: ");
+  Serial.println(WiFi.subnetMask());
+  Serial.print("Gateway IP: ");
+  Serial.println(WiFi.gatewayIP());
+  Serial.print("DNS IP: ");
+  Serial.println(WiFi.dnsIP());
+  Serial.print("MAC address: ");
+  Serial.println(WiFi.macAddress());
+
   Serial.print("http://");
   Serial.println(WiFi.localIP());
   Serial.println("  /cam.bmp");
