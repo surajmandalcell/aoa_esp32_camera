@@ -324,7 +324,7 @@ public:
     }
 };
 
-class NetworkManager {
+class ESPNetworkManager {
 public:
     static bool connectToWiFi() {
         WiFi.persistent(false);
@@ -361,7 +361,7 @@ void setup() {
         return;
     }
 
-    if (!NetworkManager::connectToWiFi()) {
+    if (!ESPNetworkManager::connectToWiFi()) {
         return;
     }
 
