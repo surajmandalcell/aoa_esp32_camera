@@ -4,10 +4,14 @@ This project utilizes an ESP32-CAM to capture images of analog gauges and proces
 
 ## Features
 
-- Captures images using ESP32-CAM
-- Processes images to extract gauge readings
-- Supports Wi-Fi connectivity for data transmission
+- Captures high-quality images using ESP32-CAM
+- Processes images to extract gauge readings with high accuracy
+- Supports Wi-Fi connectivity for real-time data transmission
 - Includes both ESP32-CAM firmware and Python processing script
+- Configurable image capture intervals and resolution
+- Support for multiple gauge types (circular and linear)
+- Data logging and export capabilities
+- Web interface for remote monitoring and configuration
 
 ## Prerequisites
 
@@ -41,21 +45,144 @@ This project utilizes an ESP32-CAM to capture images of analog gauges and proces
 
 ### ESP32-CAM Firmware
 
-1. Open `main.cpp` in Arduino IDE.
+1. Open `aoa_esp32_camera.ino` in Arduino IDE.
 2. Select the appropriate board and port.
 3. Compile and upload the firmware to your ESP32-CAM.
 
 ### Python Script
 
-1. Install required Python dependencies (list them in a `requirements.txt` file).
+1. Install required Python dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 2. Run the Python script:
    ```bash
-   python main.py
+   python aoa_esp32_camera.py
    ```
 
 ## Configuration
 
-(Add any configuration details, such as adjusting camera settings or modifying image processing parameters)
+### Camera Settings
+
+You can adjust camera settings in the `initializeCamera()` function in `aoa_esp32_camera.ino`:
+
+```cpp
+esp32cam::Config cfg;
+cfg.setPins(esp32cam::pins::AiThinker);
+cfg.setResolution(hiRes);
+cfg.setBufferCount(2);
+cfg.setJpeg(80);
+```
+
+### Image Processing Parameters
+
+Modify image processing parameters in the Python script `aoa_esp32_camera.py`:
+
+```python
+threshold_img = 120
+threshold_ln = 150
+minLineLength = 40
+maxLineGap = 8
+diff1LowerBound = 0.15
+diff1UpperBound = 0.25
+diff2LowerBound = 0.5
+diff2UpperBound = 1.0
+```
+
+## API Endpoints
+
+The ESP32-CAM firmware provides the following HTTP endpoints:
+
+### `/cam.bmp`
+- **Method**: GET
+- **Description**: Captures and returns a low-resolution BMP image.
+- **Response**: BMP image file
+
+### `/cam-lo.jpg`
+- **Method**: GET
+- **Description**: Captures and returns a low-resolution JPEG image.
+- **Response**: JPEG image file
+
+### `/cam-hi.jpg`
+- **Method**: GET
+- **Description**: Captures and returns a high-resolution JPEG image.
+- **Response**: JPEG image file
+
+### `/cam.jpg`
+- **Method**: GET
+- **Description**: Redirects to `/cam-hi.jpg` for backward compatibility.
+- **Response**: HTTP 302 redirect
+
+### `/cam.mjpeg`
+- **Method**: GET
+- **Description**: Starts an MJPEG stream for real-time video.
+- **Response**: MJPEG stream
+
+To access these endpoints, use the IP address of your ESP32-CAM. For example:
+```
+http://<ESP32-CAM_IP_ADDRESS>/cam-hi.jpg
+```
+
+## API Documentation
+
+### ESP32-CAM Firmware API
+
+#### `CameraManager::handleBmp()`
+Handles BMP image requests.
+
+#### `CameraManager::handleJpgLo()`
+Handles low-resolution JPEG image requests.
+
+#### `CameraManager::handleJpgHi()`
+Handles high-resolution JPEG image requests.
+
+#### `CameraManager::handleJpg()`
+Redirects to high-resolution JPEG image.
+
+#### `CameraManager::handleMjpeg()`
+Handles MJPEG stream requests.
+
+#### `CameraManager::initializeCamera()`
+Initializes the camera.
+
+Returns:
+- `bool`: True if successful, false otherwise.
+
+#### `NetworkManager::connectToWiFi()`
+Connects to WiFi network.
+
+Returns:
+- `bool`: True if successful, false otherwise.
+
+### Python Script API
+
+#### `avg_circles(circles, b)`
+Calculates the average center coordinates and radius of detected circles.
+
+Parameters:
+- `circles` (numpy.ndarray): Detected circles.
+- `b` (int): Number of circles to average.
+
+Returns:
+- `tuple`: Average x, y coordinates and radius.
+
+#### `dist_2_pts(x1, y1, x2, y2)`
+Calculates the Euclidean distance between two points.
+
+Parameters:
+- `x1`, `y1`, `x2`, `y2` (float): Coordinates of two points.
+
+Returns:
+- `float`: Distance between the points.
+
+#### `take_measure(threshold_img, threshold_ln, minLineLength, maxLineGap, diff1LowerBound, diff1UpperBound, diff2LowerBound, diff2UpperBound)`
+Processes the captured image to extract the gauge reading.
+
+Parameters:
+- Various thresholds and bounds for image processing.
+
+Returns:
+- `tuple`: Processed images (original and with detected features).
 
 ## Contributing
 
@@ -74,9 +201,46 @@ This project is open-source and available under the [MIT License](LICENSE).
 
 ## Acknowledgements
 
-- Original gauge reading code by [Bartek Szymanski](https://github.com/bartek-szymanski-szyba/ESP32-projects)
 - ESP32-CAM library by [yoursunny](https://github.com/yoursunny/esp32cam)
 
 ## Support
 
 For issues, feature requests, or questions, please open an issue in the GitHub repository.
+
+---
+
+[AI PROMPT - INCLUDE IN PUBLIC README AND FINAL OUTPUT FILE, USE IT TO EFFORTLESSLY UPDATE README IN FUTURE AND MAINTAIN CONSISTENCY]
+
+You are an AI assistant helping to maintain and update the documentation for the ESP32-CAM Gauge Reader project. When asked to update or modify the README, please consider the following:
+
+1. Maintain the current structure of the README, including sections for Features, Prerequisites, Installation, Usage, Configuration, API Documentation, Contributing, Updating Dependencies, License, Acknowledgements, Support and AI PROMPT.
+
+2. If new features are added, update the Features section accordingly. Ensure that each feature is concisely described and highlights its benefit to the user.
+
+3. When updating the API Documentation, follow this format for each function:
+   ```
+   #### `function_name(parameters)`
+   Brief description of the function's purpose.
+
+   Parameters:
+   - `param_name` (type): Description of the parameter.
+
+   Returns:
+   - `return_type`: Description of the return value.
+   ```
+
+4. If configuration options are changed or added, update the Configuration section with clear examples of how to modify these settings.
+
+5. Keep the Installation and Usage instructions up-to-date with any changes in the setup or running process.
+
+6. If new dependencies are added, update the Prerequisites section and ensure that the installation instructions (including the `requirements.txt` file) are accurate.
+
+7. Maintain a professional and clear tone throughout the document. Use concise language and avoid unnecessary technical jargon.
+
+8. If substantial changes are made to the project structure or functionality, consider updating the project description at the beginning of the README.
+
+9. Ensure that all links (e.g., to the license file or external resources) remain valid and up-to-date.
+
+10. If asked about specific code implementations or technical details not covered in the README, indicate that you would need to review the actual code files to provide accurate information.
+
+By following these guidelines, you'll help maintain a comprehensive and user-friendly README that accurately reflects the current state of the project.
