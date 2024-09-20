@@ -12,6 +12,8 @@ This project utilizes an ESP32-CAM to capture images of analog gauges and proces
 - Support for multiple gauge types (circular and linear)
 - Data logging and export capabilities
 - Web interface for remote monitoring and configuration
+- Video recording functionality with automatic storage management
+- Configurable storage usage limit to prevent SD card overflow
 
 ## Prerequisites
 
@@ -19,6 +21,7 @@ This project utilizes an ESP32-CAM to capture images of analog gauges and proces
 - Arduino IDE with ESP32 board support
 - Python 3.x
 - Git
+- SD card for storage (if using video recording feature)
 
 ## Installation
 
@@ -28,15 +31,19 @@ This project utilizes an ESP32-CAM to capture images of analog gauges and proces
    cd aoa_esp32_camera
    ```
 
-2. Set up Wi-Fi credentials:
+2. Set up Wi-Fi credentials and other configurations:
    - Rename `.env.h.example` to `.env.h`
-   - Edit `.env.h` with your Wi-Fi SSID and password:
+   - Edit `.env.h` with your Wi-Fi SSID, password, and other settings:
      ```cpp
      #ifndef ENV_H
      #define ENV_H
 
      #define WIFI_SSID "your_wifi_ssid"
      #define WIFI_PASS "your_wifi_password"
+
+     #define RECORD_VIDEO true
+     #define VIDEO_DURATION 60000
+     #define MAX_STORAGE_USAGE 80
 
      #endif
      ```
@@ -89,6 +96,16 @@ diff2LowerBound = 0.5
 diff2UpperBound = 1.0
 ```
 
+### Video Recording Settings
+
+Adjust video recording settings in the `.env.h` file:
+
+```cpp
+#define RECORD_VIDEO true
+#define VIDEO_DURATION 60000
+#define MAX_STORAGE_USAGE 80
+```
+
 ## API Endpoints
 
 The ESP32-CAM firmware provides the following HTTP endpoints:
@@ -117,6 +134,16 @@ The ESP32-CAM firmware provides the following HTTP endpoints:
 - **Method**: GET
 - **Description**: Starts an MJPEG stream for real-time video.
 - **Response**: MJPEG stream
+
+### `/video/start`
+- **Method**: GET
+- **Description**: Starts video recording.
+- **Response**: Text confirmation
+
+### `/video/stop`
+- **Method**: GET
+- **Description**: Stops video recording.
+- **Response**: Text confirmation
 
 To access these endpoints, use the IP address of your ESP32-CAM. For example:
 ```
@@ -148,11 +175,38 @@ Initializes the camera.
 Returns:
 - `bool`: True if successful, false otherwise.
 
+#### `CameraManager::handleStartRecording()`
+Starts video recording.
+
+#### `CameraManager::handleStopRecording()`
+Stops video recording.
+
+#### `CameraManager::update()`
+Updates the camera manager, capturing images if recording is active.
+
 #### `NetworkManager::connectToWiFi()`
 Connects to WiFi network.
 
 Returns:
 - `bool`: True if successful, false otherwise.
+
+#### `StorageManager::initialize()`
+Initializes the SD card storage.
+
+Returns:
+- `bool`: True if successful, false otherwise.
+
+#### `StorageManager::cleanupStorage()`
+Removes oldest recordings if storage usage exceeds the defined limit.
+
+#### `StorageManager::createFolder(const String& folderName)`
+Creates a new folder for storing recordings.
+
+Parameters:
+- `folderName` (String): Name of the folder to create.
+
+Returns:
+- `String`: Path of the created folder, or empty string if failed.
 
 ### Python Script API
 
