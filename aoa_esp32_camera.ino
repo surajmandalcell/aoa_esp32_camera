@@ -1,6 +1,8 @@
 #include <esp32cam.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <FS.h>
+#include <SD_MMC.h>
 #include ".env.h"
 
 // Constants
@@ -21,44 +23,195 @@ const char* MIME_TYPE_JPEG = "image/jpeg";
 // HTTP status codes
 const int HTTP_OK = 200;
 const int HTTP_REDIRECT = 302;
+const int HTTP_BAD_REQUEST = 400;
 const int HTTP_SERVICE_UNAVAILABLE = 503;
+
+class StorageManager {
+public:
+    static bool initialize() {
+        if (!SD_MMC.begin()) {
+            Serial.println("SD Card Mount Failed");
+            return false;
+        }
+        return true;
+    }
+
+    static void cleanupStorage() {
+        if (getStorageUsage() > MAX_STORAGE_USAGE) {
+            removeOldestFolder();
+        }
+    }
+
+    static String createFolder(const String& folderName) {
+        String path = "/" + folderName;
+        if (SD_MMC.mkdir(path)) {
+            return path;
+        }
+        return "";
+    }
+
+private:
+    static float getStorageUsage() {
+        uint64_t totalBytes = SD_MMC.totalBytes();
+        uint64_t usedBytes = SD_MMC.usedBytes();
+        return (usedBytes * 100.0) / totalBytes;
+    }
+
+    static void removeOldestFolder() {
+        File root = SD_MMC.open("/");
+        if (!root || !root.isDirectory()) {
+            Serial.println("Failed to open root directory");
+            return;
+        }
+
+        String oldestFolder;
+        unsigned long oldestTime = ULONG_MAX;
+
+        File file = root.openNextFile();
+        while (file) {
+            if (file.isDirectory()) {
+                String folderName = String(file.name());
+                unsigned long startTime = extractStartTime(folderName);
+                if (startTime < oldestTime) {
+                    oldestTime = startTime;
+                    oldestFolder = folderName;
+                }
+            }
+            file = root.openNextFile();
+        }
+
+        if (oldestFolder.length() > 0) {
+            removeDirectory("/" + oldestFolder);
+            Serial.println("Removed oldest folder: " + oldestFolder);
+        }
+    }
+
+    static unsigned long extractStartTime(const String& folderName) {
+        int underscoreIndex = folderName.indexOf('_');
+        if (underscoreIndex != -1) {
+            return folderName.substring(0, underscoreIndex).toInt();
+        }
+        return 0;
+    }
+
+    static void removeDirectory(const String& path) {
+        File dir = SD_MMC.open(path);
+        if (!dir.isDirectory()) {
+            return;
+        }
+
+        File file = dir.openNextFile();
+        while (file) {
+            if (file.isDirectory()) {
+                removeDirectory(path + "/" + String(file.name()));
+            } else {
+                SD_MMC.remove(path + "/" + String(file.name()));
+            }
+            file = dir.openNextFile();
+        }
+        SD_MMC.rmdir(path);
+    }
+};
+
+class ImageRecorder {
+private:
+    String currentFolder;
+    bool isRecording;
+    unsigned long startTimestamp;
+
+public:
+    ImageRecorder() : isRecording(false) {}
+
+    bool startRecording() {
+        if (isRecording) return false;
+
+        startTimestamp = millis();
+        currentFolder = generateFolderName(startTimestamp);
+        String path = StorageManager::createFolder(currentFolder);
+        if (path.isEmpty()) {
+            Serial.println("Failed to create folder");
+            return false;
+        }
+
+        isRecording = true;
+        Serial.println("Started recording in folder: " + currentFolder);
+        return true;
+    }
+
+    bool stopRecording() {
+        if (!isRecording) return false;
+
+        unsigned long stopTimestamp = millis();
+        String newFolderName = generateFolderName(startTimestamp, stopTimestamp);
+        if (SD_MMC.rename("/" + currentFolder, "/" + newFolderName)) {
+            Serial.println("Stopped recording. Folder renamed to: " + newFolderName);
+        } else {
+            Serial.println("Failed to rename folder");
+        }
+
+        isRecording = false;
+        StorageManager::cleanupStorage();
+        return true;
+    }
+
+    bool captureImage(esp32cam::Frame* frame) {
+        if (!isRecording || !frame) return false;
+
+        String fileName = "/" + currentFolder + "/" + String(millis()) + ".jpg";
+        File file = SD_MMC.open(fileName, FILE_WRITE);
+        if (!file) {
+            Serial.println("Failed to create image file");
+            return false;
+        }
+
+        if (file.write(frame->data(), frame->size()) != frame->size()) {
+            Serial.println("Failed to write image data");
+            file.close();
+            return false;
+        }
+
+        file.close();
+        return true;
+    }
+
+    bool isCurrentlyRecording() const {
+        return isRecording;
+    }
+
+private:
+    String generateFolderName(unsigned long start, unsigned long stop = 0) {
+        char buffer[32];
+        snprintf(buffer, sizeof(buffer), "%lu", start);
+        String folderName = String(buffer);
+        if (stop > 0) {
+            snprintf(buffer, sizeof(buffer), "_%lu", stop);
+            folderName += String(buffer);
+        }
+        return folderName;
+    }
+};
 
 class CameraManager {
 private:
     WebServer& server;
     esp32cam::Resolution loRes;
     esp32cam::Resolution hiRes;
+    ImageRecorder imageRecorder;
 
-    /**
-     * @brief Captures and serves a JPEG image.
-     * @return void
-     */
     void serveJpg() {
         auto frame = esp32cam::capture();
         if (!frame) {
-            Serial.println("Error: Capture failed");
+            Serial.println("Capture failed");
             server.send(HTTP_SERVICE_UNAVAILABLE, "", "");
             return;
         }
+        Serial.printf("JPEG: %dx%d %db\n", frame->getWidth(), frame->getHeight(),
+                      static_cast<int>(frame->size()));
 
-        Serial.printf("Capture successful: %dx%d %db\n", frame->getWidth(), frame->getHeight(), static_cast<int>(frame->size()));
         server.setContentLength(frame->size());
         server.send(HTTP_OK, MIME_TYPE_JPEG);
         WiFiClient client = server.client();
         frame->writeTo(client);
-    }
-
-    /**
-     * @brief Changes camera resolution.
-     * @param resolution The desired resolution.
-     * @return bool True if successful, false otherwise.
-     */
-    bool changeResolution(const esp32cam::Resolution& resolution) {
-        if (!esp32cam::Camera.changeResolution(resolution)) {
-            Serial.println("Error: Failed to change resolution");
-            return false;
-        }
-        return true;
     }
 
 public:
@@ -67,95 +220,92 @@ public:
         hiRes = esp32cam::Resolution::find(HIGH_RES_WIDTH, HIGH_RES_HEIGHT);
     }
 
-    /**
-     * @brief Handles BMP image requests.
-     * @return void
-     */
     void handleBmp() {
-        if (!changeResolution(loRes)) {
-            server.send(HTTP_SERVICE_UNAVAILABLE, "", "");
-            return;
+        if (!esp32cam::Camera.changeResolution(loRes)) {
+            Serial.println("SET-LO-RES FAIL");
         }
 
         auto frame = esp32cam::capture();
-        if (!frame) {
-            Serial.println("Error: Capture failed");
+        if (frame == nullptr) {
+            Serial.println("CAPTURE FAIL");
             server.send(HTTP_SERVICE_UNAVAILABLE, "", "");
             return;
         }
+        Serial.printf("BMP: %dx%d %db\n", frame->getWidth(), frame->getHeight(),
+                      static_cast<int>(frame->size()));
 
         if (!frame->toBmp()) {
-            Serial.println("Error: BMP conversion failed");
+            Serial.println("CONVERT FAIL");
             server.send(HTTP_SERVICE_UNAVAILABLE, "", "");
             return;
         }
-
-        Serial.printf("BMP conversion successful: %dx%d %db\n", frame->getWidth(), frame->getHeight(), static_cast<int>(frame->size()));
         server.setContentLength(frame->size());
         server.send(HTTP_OK, MIME_TYPE_BMP);
         WiFiClient client = server.client();
         frame->writeTo(client);
     }
 
-    /**
-     * @brief Handles low-resolution JPEG image requests.
-     * @return void
-     */
     void handleJpgLo() {
-        if (changeResolution(loRes)) {
-            serveJpg();
-        } else {
-            server.send(HTTP_SERVICE_UNAVAILABLE, "", "");
+        if (!esp32cam::Camera.changeResolution(loRes)) {
+            Serial.println("SET-LO-RES FAIL");
         }
+        serveJpg();
     }
 
-    /**
-     * @brief Handles high-resolution JPEG image requests.
-     * @return void
-     */
     void handleJpgHi() {
-        if (changeResolution(hiRes)) {
-            serveJpg();
-        } else {
-            server.send(HTTP_SERVICE_UNAVAILABLE, "", "");
+        if (!esp32cam::Camera.changeResolution(hiRes)) {
+            Serial.println("SET-HI-RES FAIL");
         }
+        serveJpg();
     }
 
-    /**
-     * @brief Redirects to high-resolution JPEG image.
-     * @return void
-     */
     void handleJpg() {
         server.sendHeader("Location", "/cam-hi.jpg");
         server.send(HTTP_REDIRECT, "", "");
     }
 
-    /**
-     * @brief Handles MJPEG stream requests.
-     * @return void
-     */
     void handleMjpeg() {
-        if (!changeResolution(hiRes)) {
-            server.send(HTTP_SERVICE_UNAVAILABLE, "", "");
-            return;
+        if (!esp32cam::Camera.changeResolution(hiRes)) {
+            Serial.println("SET-HI-RES FAIL");
         }
 
-        Serial.println("Starting MJPEG stream");
+        Serial.println("STREAM BEGIN");
         WiFiClient client = server.client();
         auto startTime = millis();
         int res = esp32cam::Camera.streamMjpeg(client);
         if (res <= 0) {
-            Serial.printf("Error: MJPEG streaming failed with code %d\n", res);
+            Serial.printf("STREAM ERROR %d\n", res);
             return;
         }
         auto duration = millis() - startTime;
-        Serial.printf("MJPEG stream ended: %d frames, %0.2f fps\n", res, 1000.0 * res / duration);
+        Serial.printf("STREAM END %dfrm %0.2ffps\n", res, 1000.0 * res / duration);
     }
 
-    /**
-     * @brief Initializes the camera.
-     * @return bool True if successful, false otherwise.
-     */
+    void update() {
+        if (imageRecorder.isCurrentlyRecording()) {
+            auto frame = esp32cam::capture();
+            if (frame) {
+                imageRecorder.captureImage(frame.get());
+            }
+        }
+    }
+
+    void handleStartRecording() {
+        if (imageRecorder.startRecording()) {
+            server.send(HTTP_OK, "text/plain", "Recording started");
+        } else {
+            server.send(HTTP_BAD_REQUEST, "text/plain", "Failed to start recording");
+        }
+    }
+
+    void handleStopRecording() {
+        if (imageRecorder.stopRecording()) {
+            server.send(HTTP_OK, "text/plain", "Recording stopped");
+        } else {
+            server.send(HTTP_BAD_REQUEST, "text/plain", "Failed to stop recording");
+        }
+    }
+
     bool initializeCamera() {
         esp32cam::Config cfg;
         cfg.setPins(esp32cam::pins::AiThinker);
@@ -165,16 +315,17 @@ public:
         
         bool success = esp32cam::Camera.begin(cfg);
         Serial.println(success ? "Camera initialized successfully" : "Error: Camera initialization failed");
+
+        if (success) {
+            StorageManager::initialize();
+        }
+
         return success;
     }
 };
 
 class NetworkManager {
 public:
-    /**
-     * @brief Connects to WiFi network.
-     * @return bool True if successful, false otherwise.
-     */
     static bool connectToWiFi() {
         WiFi.persistent(false);
         WiFi.mode(WIFI_STA);
@@ -187,35 +338,15 @@ public:
         }
         
         if (WiFi.status() != WL_CONNECTED) {
-            Serial.println("Error: Failed to connect to WiFi");
+            Serial.println("Failed to connect to WiFi");
             return false;
         }
         
-        printNetworkDetails();
+        Serial.println("WiFi connected");
+        Serial.print("Camera Ready! Use 'http://");
+        Serial.print(WiFi.localIP());
+        Serial.println("' to connect");
         return true;
-    }
-
-private:
-    /**
-     * @brief Prints network connection details.
-     * @return void
-     */
-    static void printNetworkDetails() {
-        Serial.println("\nWiFi connected successfully");
-        Serial.print("SSID: ");
-        Serial.println(WiFi.SSID());
-        Serial.print("IP address: ");
-        Serial.println(WiFi.localIP());
-        Serial.print("Subnet Mask: ");
-        Serial.println(WiFi.subnetMask());
-        Serial.print("Gateway IP: ");
-        Serial.println(WiFi.gatewayIP());
-        Serial.print("DNS IP: ");
-        Serial.println(WiFi.dnsIP());
-        Serial.print("MAC address: ");
-        Serial.println(WiFi.macAddress());
-        Serial.print("http://");
-        Serial.println(WiFi.localIP());
     }
 };
 
@@ -234,11 +365,13 @@ void setup() {
         return;
     }
 
-    server.on("/cam.bmp", std::bind(&CameraManager::handleBmp, &cameraManager));
-    server.on("/cam-lo.jpg", std::bind(&CameraManager::handleJpgLo, &cameraManager));
-    server.on("/cam-hi.jpg", std::bind(&CameraManager::handleJpgHi, &cameraManager));
-    server.on("/cam.jpg", std::bind(&CameraManager::handleJpg, &cameraManager));
-    server.on("/cam.mjpeg", std::bind(&CameraManager::handleMjpeg, &cameraManager));
+    server.on("/cam.bmp", HTTP_GET, std::bind(&CameraManager::handleBmp, &cameraManager));
+    server.on("/cam-lo.jpg", HTTP_GET, std::bind(&CameraManager::handleJpgLo, &cameraManager));
+    server.on("/cam-hi.jpg", HTTP_GET, std::bind(&CameraManager::handleJpgHi, &cameraManager));
+    server.on("/cam.jpg", HTTP_GET, std::bind(&CameraManager::handleJpg, &cameraManager));
+    server.on("/cam.mjpeg", HTTP_GET, std::bind(&CameraManager::handleMjpeg, &cameraManager));
+    server.on("/video/start", HTTP_GET, std::bind(&CameraManager::handleStartRecording, &cameraManager));
+    server.on("/video/stop", HTTP_GET, std::bind(&CameraManager::handleStopRecording, &cameraManager));
 
     server.begin();
     Serial.println("HTTP server started");
@@ -246,4 +379,5 @@ void setup() {
 
 void loop() {
     server.handleClient();
+    cameraManager.update();
 }
