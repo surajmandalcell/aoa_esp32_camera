@@ -355,15 +355,21 @@ CameraManager cameraManager(server);
 
 void setup() {
     Serial.begin(SERIAL_BAUD_RATE);
-    Serial.println();
+    Serial.println("\n\nESP32-CAM Gauge Reader starting...");
 
+    Serial.println("Initializing camera...");
     if (!cameraManager.initializeCamera()) {
+        Serial.println("Camera initialization failed!");
         return;
     }
+    Serial.println("Camera initialized successfully.");
 
+    Serial.println("Connecting to WiFi...");
     if (!ESPNetworkManager::connectToWiFi()) {
+        Serial.println("WiFi connection failed!");
         return;
     }
+    Serial.println("WiFi connected successfully.");
 
     server.on("/cam.bmp", HTTP_GET, std::bind(&CameraManager::handleBmp, &cameraManager));
     server.on("/cam-lo.jpg", HTTP_GET, std::bind(&CameraManager::handleJpgLo, &cameraManager));
