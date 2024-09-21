@@ -26,6 +26,22 @@ const int HTTP_REDIRECT = 302;
 const int HTTP_BAD_REQUEST = 400;
 const int HTTP_SERVICE_UNAVAILABLE = 503;
 
+class TimestampGenerator {
+public:
+    static String generateTimestamp() {
+        unsigned long currentTime = millis();
+        return String(currentTime);
+    }
+
+    static String generateFolderName(unsigned long start, unsigned long stop = 0) {
+        String folderName = String(start);
+        if (stop > 0) {
+            folderName += "_" + String(stop);
+        }
+        return folderName;
+    }
+};
+
 class StorageManager {
 public:
     static bool initialize() {
@@ -126,7 +142,7 @@ public:
         if (isRecording) return false;
 
         startTimestamp = millis();
-        currentFolder = generateFolderName(startTimestamp);
+        currentFolder = TimestampGenerator::generateFolderName(startTimestamp);
         String path = StorageManager::createFolder(currentFolder);
         if (path.isEmpty()) {
             Serial.println("Failed to create folder");
@@ -142,7 +158,7 @@ public:
         if (!isRecording) return false;
 
         unsigned long stopTimestamp = millis();
-        String newFolderName = generateFolderName(startTimestamp, stopTimestamp);
+        String newFolderName = TimestampGenerator::generateFolderName(startTimestamp, stopTimestamp);
         if (SD_MMC.rename("/" + currentFolder, "/" + newFolderName)) {
             Serial.println("Stopped recording. Folder renamed to: " + newFolderName);
         } else {
@@ -157,7 +173,7 @@ public:
     bool captureImage(esp32cam::Frame* frame) {
         if (!isRecording || !frame) return false;
 
-        String fileName = "/" + currentFolder + "/" + String(millis()) + ".jpg";
+        String fileName = "/" + currentFolder + "/" + TimestampGenerator::generateTimestamp() + ".jpg";
         File file = SD_MMC.open(fileName, FILE_WRITE);
         if (!file) {
             Serial.println("Failed to create image file");
@@ -176,18 +192,6 @@ public:
 
     bool isCurrentlyRecording() const {
         return isRecording;
-    }
-
-private:
-    String generateFolderName(unsigned long start, unsigned long stop = 0) {
-        char buffer[32];
-        snprintf(buffer, sizeof(buffer), "%lu", start);
-        String folderName = String(buffer);
-        if (stop > 0) {
-            snprintf(buffer, sizeof(buffer), "_%lu", stop);
-            folderName += String(buffer);
-        }
-        return folderName;
     }
 };
 
@@ -312,6 +316,10 @@ public:
         cfg.setResolution(hiRes);
         cfg.setBufferCount(2);
         cfg.setJpeg(80);
+        
+        if (ENABLE_FLASH) {
+            cfg.setFlash(esp32cam::pins::AiThinker::LED_GPIO);
+        }
         
         bool success = esp32cam::Camera.begin(cfg);
         Serial.println(success ? "Camera initialized successfully" : "Error: Camera initialization failed");
