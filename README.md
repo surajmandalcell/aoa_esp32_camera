@@ -48,6 +48,18 @@ This project utilizes an ESP32-CAM to capture images of analog gauges and proces
      #endif
      ```
 
+3. Open `aoa_esp32_camera.ino` in Arduino IDE.(The esp32cam library is already included as a submodule in the project)
+4. Compile and upload the firmware to your ESP32-CAM.
+5. Install Python dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+6. Run the Python script:
+   ```bash
+   python aoa_esp32_camera.py
+   ```
+7. Access the ESP32-CAM endpoints to view images or video streams.
+
 ## Usage
 
 ### ESP32-CAM Firmware
