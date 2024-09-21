@@ -28,8 +28,7 @@ const int HTTP_SERVICE_UNAVAILABLE = 503;
 class TimestampGenerator {
 public:
     static String generateTimestamp() {
-        unsigned long currentTime = millis();
-        return String(currentTime);
+        return String(millis());
     }
 
     static String generateFolderName(unsigned long start, unsigned long stop = 0) {
@@ -128,6 +127,8 @@ private:
     }
 };
 
+class CameraManager;  // Forward declaration
+
 class ImageRecorder {
 private:
     String currentFolder;
@@ -169,25 +170,7 @@ public:
         return true;
     }
 
-    bool captureImage(esp32cam::Frame* frame) {
-        if (!isRecording || !frame) return false;
-
-        String fileName = "/" + currentFolder + "/" + TimestampGenerator::generateTimestamp() + ".jpg";
-        File file = SD_MMC.open(fileName, FILE_WRITE);
-        if (!file) {
-            Serial.println("Failed to create image file");
-            return false;
-        }
-
-        if (file.write(frame->data(), frame->size()) != frame->size()) {
-            Serial.println("Failed to write image data");
-            file.close();
-            return false;
-        }
-
-        file.close();
-        return true;
-    }
+    bool captureImage(esp32cam::Frame* frame, CameraManager& cameraManager);
 
     bool isCurrentlyRecording() const {
         return isRecording;
@@ -200,6 +183,7 @@ private:
     esp32cam::Resolution loRes;
     esp32cam::Resolution hiRes;
     ImageRecorder imageRecorder;
+    static const int FLASH_LED_PIN = 4;  // GPIO pin for flash LED
 
     void serveJpg() {
         auto frame = esp32cam::capture();
@@ -215,6 +199,13 @@ private:
         server.send(HTTP_OK, MIME_TYPE_JPEG);
         WiFiClient client = server.client();
         frame->writeTo(client);
+    }
+
+    void initializeFlash() {
+        if (ENABLE_FLASH) {
+            pinMode(FLASH_LED_PIN, OUTPUT);
+            digitalWrite(FLASH_LED_PIN, LOW);  // Turn off flash initially
+        }
     }
 
 public:
@@ -288,7 +279,7 @@ public:
         if (imageRecorder.isCurrentlyRecording()) {
             auto frame = esp32cam::capture();
             if (frame) {
-                imageRecorder.captureImage(frame.get());
+                imageRecorder.captureImage(frame.get(), *this);
             }
         }
     }
@@ -316,9 +307,7 @@ public:
         cfg.setBufferCount(2);
         cfg.setJpeg(80);
         
-        if (ENABLE_FLASH) {
-            cfg.setFlash(esp32cam::pins::AiThinker::LED_GPIO);
-        }
+        initializeFlash();  // Initialize flash LED
         
         bool success = esp32cam::Camera.begin(cfg);
         Serial.println(success ? "Camera initialized successfully" : "Error: Camera initialization failed");
@@ -329,7 +318,40 @@ public:
 
         return success;
     }
+
+    void setFlash(bool on) {
+        if (ENABLE_FLASH) {
+            digitalWrite(FLASH_LED_PIN, on ? HIGH : LOW);
+        }
+    }
 };
+
+bool ImageRecorder::captureImage(esp32cam::Frame* frame, CameraManager& cameraManager) {
+    if (!isRecording || !frame) return false;
+
+    cameraManager.setFlash(true);  // Turn on flash
+    // Short delay to allow flash to take effect
+    delay(100);
+
+    String fileName = "/" + currentFolder + "/" + TimestampGenerator::generateTimestamp() + ".jpg";
+    File file = SD_MMC.open(fileName, FILE_WRITE);
+    if (!file) {
+        Serial.println("Failed to create image file");
+        cameraManager.setFlash(false);  // Turn off flash
+        return false;
+    }
+
+    if (file.write(frame->data(), frame->size()) != frame->size()) {
+        Serial.println("Failed to write image data");
+        file.close();
+        cameraManager.setFlash(false);  // Turn off flash
+        return false;
+    }
+
+    file.close();
+    cameraManager.setFlash(false);  // Turn off flash
+    return true;
+}
 
 class ESPNetworkManager {
 public:
@@ -361,7 +383,7 @@ WebServer server(SERVER_PORT);
 CameraManager cameraManager(server);
 
 void setup() {
-    Serial.begin(SERIAL_BAUD_RATE);
+    Serial.begin(115200);
     Serial.println("\n\nESP32-CAM Gauge Reader starting...");
 
     Serial.println("Initializing camera...");
