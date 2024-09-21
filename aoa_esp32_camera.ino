@@ -7,7 +7,6 @@
 
 // Constants
 const uint16_t SERVER_PORT = 80;
-const uint16_t SERIAL_BAUD_RATE = 115200;
 const uint16_t WIFI_CONNECTION_RETRY_DELAY = 500; // milliseconds
 
 // Camera resolution settings
